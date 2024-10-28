@@ -115,7 +115,23 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
                    e5_vars:list,
                    dt_end:datetime.datetime ):
     cds_dsname = 'reanalysis-era5-single-levels'
-    cds = cdsapi.Client()
+    #cds = cdsapi.Client()
+    cds = cdsapi.Client(
+        url=os.environ.get("CDSAPI_URL"),
+        key=os.environ.get("CDSAPI_KEY"),
+        quiet=True,
+        debug=False,
+        verify=None,
+        timeout=80,
+        progress=True,
+        delete=True,
+        retry_max=500,
+        sleep_max=60 )
+        # wait_until_complete=True,
+        # info_callback=None, warning_callback=None, error_callback=None,
+        # debug_callback=None, metadata=None, forget=False,
+        # session=requests.Session())
+
 
     # for each variable
     for e5_var in e5_vars:
