@@ -24,11 +24,15 @@ import argparse
 import datetime
 import os
 import math
+import typing
 
 import parsl
 from parsl import python_app
 from parsl.config import Config
 from parsl.executors.threads import ThreadPoolExecutor
+
+
+ERA5_START_YR: typing.Final = 1940
 
 # map ERA5 single levels long variable names to short variable names
 # era5_varnmap = {
@@ -174,7 +178,7 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
     for e5_var in e5_vars:
         lfut = []   # store the parsl futures
         # for each year from 1940
-        years = list( range( 1940, dt_end.year + 1 ) )
+        years = list( range( ERA5_START_YR, dt_end.year + 1 ) )
         for year in reversed(years):
             output_fname = e5_var_filename( e5_var, year )
             dest_filename = f'{loc_path}/{output_fname}'
@@ -359,7 +363,7 @@ def main():
     #csvout_name = 'output.csv'
     csvout_name = location_name + '.csv'
     csvout_fullpath = os.path.join(csvout_path, csvout_name)
-    create_csv(loc_path, csvout_fullpath, e5_varlist, 1970, dt_end.year)
+    create_csv(loc_path, csvout_fullpath, e5_varlist, ERA5_START_YR, dt_end.year)
     print('csv done.')
 
 
