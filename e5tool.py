@@ -25,6 +25,10 @@ import datetime
 import os
 import math
 
+import parsl
+from parsl import python_app
+from parsl.config import Config
+from parsl.executors.threads import ThreadPoolExecutor
 
 # map ERA5 single levels long variable names to short variable names
 # era5_varnmap = {
@@ -42,7 +46,7 @@ def form_cds_request( lat_n:float, long_e:float, e5_var:str, year:int ) -> dict:
     # DEBUG: for now download 2x2 area so Panoply can open the .nc file.
     # ...Panoply is nice for debugging. It cant open a 1x1 .nc file.
     area_coord = [lat_n, long_e-0.25, lat_n-0.25, long_e]
-    print( 'area_coord NWSE: ' + repr(area_coord))
+    print( 'debug: area_coord NWSE: ' + repr(area_coord))
     cds_req = {
         "product_type": ["reanalysis"],
         "variable": [e5_var],
@@ -81,7 +85,6 @@ def form_cds_request( lat_n:float, long_e:float, e5_var:str, year:int ) -> dict:
         "area": area_coord
     }
     return cds_req
-    pass
 
 
 def hours_in_year(year):
@@ -98,6 +101,7 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
 
     # see if the dataset has a full years worth of hours.
     num_hours = len(ads['valid_time'])
+    ads.close()
 
     # if the year is THIS year, the # of hours available is the CDS ERA5 embargo period
     if year == dt_end.year:
@@ -107,13 +111,25 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
         print( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) for {year}')
     else:
         max_hours = hours_in_year(year)
+
     return num_hours >= max_hours
 
 
-def download_era5( grid_lat_n:float, grid_long_e:float,
-                   loc_path:str,
-                   e5_vars:list,
-                   dt_end:datetime.datetime ):
+@python_app
+def download_era5_year( grid_lat_n:float, grid_long_e:float,
+                        dest_filename:str,
+                        e5_var:str,
+                        year:int ):
+    # internalize imports for parsl compat.
+    import cdsapi
+    import netCDF4
+    import logging
+
+    # eat the cds WARNING messages
+    def warn_cback( astr:str ):
+        pass
+
+    # setup CDS
     cds_dsname = 'reanalysis-era5-single-levels'
     #cds = cdsapi.Client()
     cds = cdsapi.Client(
@@ -126,15 +142,37 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
         progress=True,
         delete=True,
         retry_max=500,
-        sleep_max=60 )
+        sleep_max=60,
+        warning_callback=warn_cback )
         # wait_until_complete=True,
         # info_callback=None, warning_callback=None, error_callback=None,
         # debug_callback=None, metadata=None, forget=False,
         # session=requests.Session())
 
+    # cdsapi has a logging bug that causes parsl to spit out alot of stuff we dont need.
+    # disable all logging
+    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+    #clog = logging.getLogger[ 'cdsapi' ]
+    logging.disable( level=logging.CRITICAL+1 )
 
+    # download to temporary file
+    print( f'downloading {e5_var} {year}...' )
+    cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_var, year )
+    temp_filename = dest_filename + '.tempdl'
+    cds.retrieve(cds_dsname, cds_req, temp_filename)
+
+    ## rename completed download, thus 'marking' it completed
+    os.rename( temp_filename, dest_filename )
+    pass
+
+
+def download_era5( grid_lat_n:float, grid_long_e:float,
+                   loc_path:str,
+                   e5_vars:list,
+                   dt_end:datetime.datetime ):
     # for each variable
     for e5_var in e5_vars:
+        lfut = []   # store the parsl futures
         # for each year from 1940
         years = list( range( 1940, dt_end.year + 1 ) )
         for year in reversed(years):
@@ -149,13 +187,13 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
                     print(f'{dest_filename} is complete. skipping')
                     continue
 
-            print( f'downloading {e5_var} {year}...' )
-            cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_var, year )
-            # download to temporary filename
-            temp_filename = dest_filename + '.tempdl'
-            cds.retrieve(cds_dsname, cds_req, temp_filename)
-            ## rename completed download, thus 'marking' it completed
-            os.rename( temp_filename, dest_filename )
+            lfut.append(
+                download_era5_year( grid_lat_n, grid_long_e, dest_filename, e5_var, year )
+            )
+
+        # Wait for the results from parsl-ing
+        [i.result() for i in lfut]
+        print(f'done downloading {year}.')
     pass
 
 
@@ -176,7 +214,6 @@ def open_nc_ro( loc_path:str, e5_var:str, year:int ) -> (netCDF4.Dataset, str):
 # Create a CSV file from downloaded netcdf files for ONE location
 def create_csv( loc_path:str, csv_fname:str, e5_vars:list, start_year:int, end_year:int ):
     # truncate & recreate any existing CSV
-    #csv_fname = './output.csv'
     csv_file = open( csv_fname, 'w')
     header_str = 'datetime'
     for e5v in e5_vars:
@@ -247,6 +284,16 @@ def main():
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
     csvout_path = './csvoutput'
+
+    # Configure parsl to use a local thread pool.
+    # Set the # of simultaneous downloads here! max_threads
+    local_threads = Config(
+        executors=[
+            ThreadPoolExecutor( max_threads=5, label='local_threads')
+        ]
+    )
+    parsl.clear()
+    parsl.load(local_threads)
 
     # hello
     print( f'CDS ERA5 {cds_dsname} download tool v{app_version} **\n')
