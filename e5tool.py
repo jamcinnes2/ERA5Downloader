@@ -197,7 +197,7 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
 
         # Wait for the results from parsl-ing
         [i.result() for i in lfut]
-        print(f'done downloading {year}.')
+        print(f'done downloading {e5_var}.')
     pass
 
 
@@ -216,18 +216,19 @@ def open_nc_ro( loc_path:str, e5_var:str, year:int ) -> (netCDF4.Dataset, str):
 
 
 # Create a CSV file from downloaded netcdf files for ONE location
-def create_csv( loc_path:str, csv_fname:str, e5_vars:list, start_year:int, end_year:int ):
+def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
     # truncate & recreate any existing CSV
     csv_file = open( csv_fname, 'w')
+    # create the column header line (todo: we could include UNITS here)
     header_str = 'datetime'
     for e5v in e5_vars:
         header_str += ',' + e5v
     print(header_str, file=csv_file)
-    #csv_file.write( header_str+'\n' );
 
     era5_varmap={}   # this dict will be our ERA5 long to short name map
 
     # we will process one year at a time
+    start_year = ERA5_START_YR
     years = list( range( start_year, end_year + 1 ) )
     for year in years:
         yidx = year - start_year
@@ -308,7 +309,7 @@ def main():
     parser.add_argument( '--no-download', action='store_true', help='dont download anything' )
     parser.add_argument('latn', nargs='?', default=59.4385, type=float, help='latitude in decimal degrees north')
     parser.add_argument('longe', nargs='?', default=-151.7150, type=float, help='longitude in decimal degrees east')
-    parser.add_argument( 'varname', nargs='?', default='xInvalidnamex', help='ERA5 variable name' )
+    parser.add_argument( '--var', action='append', help='ERA5 variable name. can use multiple times' )
     args = parser.parse_args()
 
     # to nearest quarter degree for ERA5 dataset
@@ -341,7 +342,10 @@ def main():
         print('done.')
         exit()
 
-    e5_varlist = [args.varname]
+    if args.var == None:
+        print( 'Error: You must give at least one variable name.' )
+        exit(-1)
+    e5_varlist = args.var
 
     # calcute datetime of newest data we can request from CDS (5 day embargo)
     dt_today = datetime.datetime.now(tz=datetime.timezone.utc)
