@@ -2,7 +2,7 @@
 #
 # 2024 by John McInnes for Ground Truth Trekking
 #
-# todo: use os.path.join
+# todo: use os.path.join, --no-download bug, multiple vars in one cds request, useful errors on CDSAPI changes
 
 # some test variables.. the ones we used for hwitw
 # test_variables = [
@@ -242,10 +242,13 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
             rds_list.append( rds )
             #print( f'debug: opened {rfname}' )
 
-            # get the number of hours. make sure each file has the same amount
+            # get the number of hours. make sure each file has the same amount,
+            # ..unless it is ERA5_START_YR. there seems to be some variation there. 8777 hours.
             nh_in_file = rds.dimensions['valid_time'].size
+            if year != end_year and nh_in_file != 8760 and nh_in_file != 8784:
+                print(f'weird num_hours {nh_in_file} {rfname}.')
             if num_hours == 0:  num_hours=nh_in_file
-            elif nh_in_file != num_hours:
+            elif nh_in_file != num_hours and year != ERA5_START_YR:
                 raise RuntimeError(f'num_hours mismatch looking for {num_hours}, got {nh_in_file} {rfname}.')
 
             # CDS doesn't give us a way to programmatically map a variable's long name
@@ -267,8 +270,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
             csvline_str = the_dt.isoformat()
             #print( f'debug: the_dt {csvline_str}')
             var_idx = 0
-            for e5short in era5_varmap.values():
-                #e5short = era5_varmap[e5v]
+            for e5short in era5_varmap.values():    # have to use the short names here
                 # indexing is list,var,valid_time,lat,long
                 val = rds_list[var_idx][e5short][hidx][0][0]
                 csvline_str += f',{val}'
@@ -284,7 +286,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
 
 def main():
-    app_version = "0.6.0"
+    app_version = "0.7.0"
     current_time = datetime.datetime.now()
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
@@ -310,6 +312,7 @@ def main():
     parser.add_argument('latn', nargs='?', default=59.4385, type=float, help='latitude in decimal degrees north')
     parser.add_argument('longe', nargs='?', default=-151.7150, type=float, help='longitude in decimal degrees east')
     parser.add_argument( '--var', action='append', help='ERA5 variable name. can use multiple times' )
+    parser.add_argument( '--location-name', help='Give the output file a friendly name. ex Tyonek' )
     args = parser.parse_args()
 
     # to nearest quarter degree for ERA5 dataset
@@ -364,10 +367,12 @@ def main():
         print('download done.')
 
     # transform raw downloads into CSV
-    #csvout_name = 'output.csv'
-    csvout_name = location_name + '.csv'
+    friendly_name = location_name
+    if args.location_name:
+        friendly_name = args.location_name
+    csvout_name = friendly_name + '.csv'
     csvout_fullpath = os.path.join(csvout_path, csvout_name)
-    create_csv(loc_path, csvout_fullpath, e5_varlist, ERA5_START_YR, dt_end.year)
+    create_csv(loc_path, csvout_fullpath, e5_varlist, dt_end.year)
     print('csv done.')
 
 
