@@ -218,7 +218,7 @@ def open_nc_ro( loc_path:str, e5_var:str, year:int ) -> (netCDF4.Dataset, str):
 # Create a CSV file from downloaded netcdf files for ONE location
 def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
     # truncate & recreate any existing CSV
-    csv_file = open( csv_fname, 'w')
+    csv_file = open( csv_fname, 'w' )
     # create the column header line (todo: we could include UNITS here)
     header_str = 'datetime'
     for e5v in e5_vars:
@@ -232,24 +232,34 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
     years = list( range( start_year, end_year + 1 ) )
     for year in years:
         yidx = year - start_year
-        num_hours = 0
         print( f'output year {year}' )
 
         # open all our raw dataset netcdf files for this year. one for each ERA5 var
         rds_list = []
+        rds_offset = []
         for e5v in e5_vars:
             rds, rfname = open_nc_ro( loc_path, e5v, year )
             rds_list.append( rds )
-            #print( f'debug: opened {rfname}' )
+            print( f'debug: opened {rfname}' )
 
-            # get the number of hours. make sure each file has the same amount,
-            # ..unless it is ERA5_START_YR. there seems to be some variation there. 8777 hours.
+            first_epoch = rds['valid_time'][0]
+            first_dt = datetime.datetime.fromtimestamp(first_epoch, datetime.timezone.utc)
+            roffset_td = first_dt - datetime.datetime( year, 1, 1, tzinfo=datetime.timezone.utc )
+            hour_offset = roffset_td / datetime.timedelta(hours=1)
+            print( hour_offset )
+            rds_offset.append( hour_offset )
+
+            # get the number of hours in the file
             nh_in_file = rds.dimensions['valid_time'].size
-            if year != end_year and nh_in_file != 8760 and nh_in_file != 8784:
-                print(f'weird num_hours {nh_in_file} {rfname}.')
-            if num_hours == 0:  num_hours=nh_in_file
-            elif nh_in_file != num_hours and year != ERA5_START_YR:
-                raise RuntimeError(f'num_hours mismatch looking for {num_hours}, got {nh_in_file} {rfname}.')
+            # look for strange things and warn
+            if year == ERA5_START_YR:
+                # with ERA5_START_YR there seems to be some variation. 8777 hours for some vars.
+                if nh_in_file != 8760 and nh_in_file != 8784 and nh_in_file != 8777:
+                    print(f'weird num_hours {nh_in_file} for {year} {rfname}.')
+
+            elif year != end_year:
+                if nh_in_file != 8760 and nh_in_file != 8784:
+                    print(f'weird num_hours {nh_in_file} for {year} {rfname}.')
 
             # CDS doesn't give us a way to programmatically map a variable's long name
             # ..to it's short name. The long name is used in the CDS request and the
@@ -264,18 +274,34 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
         # write this years data to the CSV file
         #print(f'debug: num_hours {num_hours}')
-        for hidx in range(num_hours):
-            epoch_sec = rds_list[0]['valid_time'][hidx]
-            the_dt = datetime.datetime.fromtimestamp(epoch_sec, datetime.timezone.utc)
-            csvline_str = the_dt.isoformat()
+        this_hour_dt = datetime.datetime( year, 1, 1, tzinfo=datetime.timezone.utc )
+        end_hour_dt = datetime.datetime( year, 12, 31, hour=23, minute=0, tzinfo=datetime.timezone.utc )
+        hour_idx = 0
+        while this_hour_dt <= end_hour_dt:
+            #epoch_sec = rds_list[0]['valid_time'][hidx] # these files use epoch time format
+            #epoch_sec = this_hour_dt.timestamp()
+            #the_dt = datetime.datetime.fromtimestamp(epoch_sec, datetime.timezone.utc)
+            csvline_str = this_hour_dt.isoformat()
             #print( f'debug: the_dt {csvline_str}')
             var_idx = 0
             for e5short in era5_varmap.values():    # have to use the short names here
                 # indexing is list,var,valid_time,lat,long
-                val = rds_list[var_idx][e5short][hidx][0][0]
-                csvline_str += f',{val}'
+                # select from e5_var where the time == epoch_sec
+                rds_hour_idx = hour_idx - rds_offset[var_idx]
+                if rds_hour_idx >= 0 and rds_hour_idx < rds_list[var_idx]['valid_time'].size:
+                    val = rds_list[var_idx][e5short][rds_hour_idx][0][0]
+                    val_str = str(val)
+                else:
+                    val_str = 'null'
+
+                csvline_str += ',' + val_str
                 var_idx += 1
+
             print(csvline_str, file=csv_file)
+            this_hour_dt = this_hour_dt + datetime.timedelta( hours=1 )
+            hour_idx += 1
+            # if this_hour_dt.hour==0:
+            #     print('.',end=None)
 
         # close netcdf datasets for year
         for ads in rds_list:
