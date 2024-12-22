@@ -2,7 +2,8 @@
 #
 # 2024 by John McInnes for Ground Truth Trekking
 #
-# todo: use os.path.join, --no-download bug, multiple vars in one cds request, useful errors on CDSAPI changes
+# todo: use os.path.join, --no-download bug, useful errors on CDSAPI changes
+# todo: use csv writer, delete redundant data in .nc download files
 
 # some test variables.. the ones we used for hwitw
 # test_variables = [
@@ -25,6 +26,7 @@ import datetime
 import os
 import math
 import typing
+import csv
 
 import parsl
 from parsl import python_app
@@ -33,11 +35,41 @@ from parsl.executors.threads import ThreadPoolExecutor
 
 
 ERA5_START_YR: typing.Final = 1940
+ERA5_NAMES_CSV: typing.Final = './era5_names.csv'
+ERA5_KNOWN_METADATA: typing.Final = ['expver','latitude','longitude','number','valid_time']
 
-# map ERA5 single levels long variable names to short variable names
-# era5_varnmap = {
-#     '2m_temperature':           't2m'
-# }
+
+# # track downloaded data in a structure like this
+# # long_var_name, year, downloaded_nc_filename
+# DOWNLOAD_DB_FILE: typing.Final = './cds_dl_db.json'
+#
+# def download_db_check( e5_var:str, year:int ) -> bool:
+#     # open download 'database', see if entry exists
+#     with open( DOWNLOAD_DB_FILE, 'r') as file1:
+#         dl_db = json.load( file1 )
+#         nc_filename = dl_db[e5_var][year]
+#         if nc_filename:
+#             return true
+#     return false
+
+# lookup the ERA5 single level variable's short name
+# def e5_longtoshort( e5_var:str ) -> str:
+#     with open(ERA5_NAMES_CSV, newline='') as csvfile:
+#         reader = csv.reader(csvfile)
+#         for row in reader:
+#             if row[0] == e5_var:
+#                 print( 'debug: long to short ' + e5_var + ' - ' + row[1])
+#                 return row[1]
+#     return None
+
+
+def get_era5_names() -> dict:
+    e5n = {}
+    with open(ERA5_NAMES_CSV, newline='') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            e5n[row[0]] = row[1]
+    return e5n
 
 
 def e5_var_filename( e5_var:str, year:int ) -> str:
@@ -45,15 +77,15 @@ def e5_var_filename( e5_var:str, year:int ) -> str:
     return efname
 
 
-def form_cds_request( lat_n:float, long_e:float, e5_var:str, year:int ) -> dict:
+def form_cds_request( lat_n:float, long_e:float, e5_vars:list, year:int ) -> dict:
     # ERA5 data is in a 0.25 degree grid.
     # DEBUG: for now download 2x2 area so Panoply can open the .nc file.
     # ...Panoply is nice for debugging. It cant open a 1x1 .nc file.
     area_coord = [lat_n, long_e-0.25, lat_n-0.25, long_e]
-    print( 'debug: area_coord NWSE: ' + repr(area_coord))
+    #print( 'debug: area_coord NWSE: ' + repr(area_coord))
     cds_req = {
         "product_type": ["reanalysis"],
-        "variable": [e5_var],
+        "variable": e5_vars,
         "year": [str(year)],
         "month": [
             "01", "02", "03",
@@ -121,8 +153,8 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
 
 @python_app
 def download_era5_year( grid_lat_n:float, grid_long_e:float,
-                        dest_filename:str,
-                        e5_var:str,
+                        loc_path:str,
+                        e5_vars:list,
                         year:int ):
     # internalize imports for parsl compat.
     import cdsapi
@@ -132,6 +164,10 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     # eat the cds WARNING messages
     def warn_cback( astr:str ):
         pass
+
+    # download the data to a file named after var0
+    output_fname = e5_var_filename( e5_vars[0], year )
+    dest_filename = f'{loc_path}/{output_fname}'
 
     # setup CDS
     cds_dsname = 'reanalysis-era5-single-levels'
@@ -155,18 +191,24 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
 
     # cdsapi has a logging bug that causes parsl to spit out alot of stuff we dont need.
     # disable all logging
-    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+    #loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
     #clog = logging.getLogger[ 'cdsapi' ]
-    logging.disable( level=logging.CRITICAL+1 )
+    #logging.disable( level=logging.CRITICAL+1 )
 
     # download to temporary file
-    print( f'downloading {e5_var} {year}...' )
-    cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_var, year )
+    print( f'downloading {e5_vars} {year}...' )
+    cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_vars, year )
     temp_filename = dest_filename + '.tempdl'
     cds.retrieve(cds_dsname, cds_req, temp_filename)
 
     ## rename completed download, thus 'marking' it completed
     os.rename( temp_filename, dest_filename )
+    ## we downloaded all vars at once. copy their data to their own files
+    for i in range(1, len(e5_vars)):
+        d2_fname = e5_var_filename( e5_vars[i], year )
+        d2_filename = f'{loc_path}/{d2_fname}'
+        shutil.copy( dest_filename, d2_filename )
+        print( 'debug: copied ' + dest_filename + " to " + d2_filename )
     pass
 
 
@@ -174,25 +216,32 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
                    loc_path:str,
                    e5_vars:list,
                    dt_end:datetime.datetime ):
-    # for each variable
+    ## give the files a unique name hashed from the var names
+    #all_var_str = '-'.join(e5_vars)
+    #e5_var_hash = hashlib.md5(all_var_str.encode('utf-8') ).hexdigest()
+    # determine what variables we have and what we dont have
+
+    ## for each variable
     for e5_var in e5_vars:
         lfut = []   # store the parsl futures
         # for each year from 1940
         years = list( range( ERA5_START_YR, dt_end.year + 1 ) )
         for year in reversed(years):
-            output_fname = e5_var_filename( e5_var, year )
-            dest_filename = f'{loc_path}/{output_fname}'
+            # we are looking for this file
+            the_fname = e5_var_filename( e5_var, year )
+            the_destpathname = f'{loc_path}/{the_fname}'
 
             # see if file already completely downloaded.
             # So if it exists and is > then some nonsense amount, and is complete # of hours.
-            already_exists = os.path.isfile(dest_filename) and os.path.getsize(dest_filename) > 500
+            already_exists = os.path.isfile(the_destpathname) and os.path.getsize(the_destpathname) > 500
             if already_exists:
-                if download_is_complete(dest_filename,year,dt_end):
-                    print(f'{dest_filename} is complete. skipping')
+                if download_is_complete(the_destpathname,year,dt_end):
+                    print(f'{the_destpathname} is complete. skipping')
                     continue
 
+            # use futures to download in parallel. request all vars at once
             lfut.append(
-                download_era5_year( grid_lat_n, grid_long_e, dest_filename, e5_var, year )
+                download_era5_year( grid_lat_n, grid_long_e, loc_path, e5_vars, year )
             )
 
         # Wait for the results from parsl-ing
@@ -205,7 +254,6 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
 def open_nc_ro( loc_path:str, e5_var:str, year:int ) -> (netCDF4.Dataset, str):
     # create & initialize the output dataset
     nc_filename = loc_path + '/' + e5_var_filename(e5_var,year)
-
     try:
         ads = netCDF4.Dataset( nc_filename, mode="r", clobber=False )
     except OSError:
@@ -225,7 +273,11 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
         header_str += ',' + e5v
     print(header_str, file=csv_file)
 
-    era5_varmap={}   # this dict will be our ERA5 long to short name map
+    # lookup the short var names, we will need them
+    era5_names=get_era5_names()
+    e5_short_vars = []
+    for e5v in e5_vars:
+        e5_short_vars.append(era5_names[e5v])
 
     # we will process one year at a time
     start_year = ERA5_START_YR
@@ -261,16 +313,16 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
                 if nh_in_file != 8760 and nh_in_file != 8784:
                     print(f'weird num_hours {nh_in_file} for {year} {rfname}.')
 
-            # CDS doesn't give us a way to programmatically map a variable's long name
-            # ..to it's short name. The long name is used in the CDS request and the
-            # ..short namne is used within the netcdf file. We will use the following
-            # ..process to figure out the variable short name ourselves and store them
-            # ..in a dict. The process is elimnate the known/expected variables and
-            # ..whatever is left is the short name. So we are assuming 1 var per file.
-            known_var_names = ['expver','latitude','longitude','number','valid_time']
-            for short_vname in rds.variables:
-                if short_vname not in known_var_names:
-                    era5_varmap[e5v] = short_vname
+            # # CDS doesn't give us a way to programmatically map a variable's long name
+            # # ..to it's short name. The long name is used in the CDS request and the
+            # # ..short namne is used within the netcdf file. We will use the following
+            # # ..process to figure out the variable short name ourselves and store them
+            # # ..in a dict. The process is elimnate the known/expected variables and
+            # # ..whatever is left is the short name. So we are assuming 1 var per file.
+            # known_var_names = ERA_KNOWN_METADATA
+            # for short_vname in rds.variables:
+            #     if short_vname not in known_var_names:
+            #         era5_varmap[e5v] = short_vname
 
         # write this years data to the CSV file
         #print(f'debug: num_hours {num_hours}')
@@ -284,7 +336,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
             csvline_str = this_hour_dt.isoformat()
             #print( f'debug: the_dt {csvline_str}')
             var_idx = 0
-            for e5short in era5_varmap.values():    # have to use the short names here
+            for e5short in e5_short_vars:    # have to use the short names here
                 # indexing is list,var,valid_time,lat,long
                 # select from e5_var where the time == epoch_sec
                 rds_hour_idx = hour_idx - rds_offset[var_idx]
@@ -317,12 +369,13 @@ def main():
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
     csvout_path = './csvoutput'
+    num_parallel_downloads = 1
 
     # Configure parsl to use a local thread pool.
     # Set the # of simultaneous downloads here! max_threads
     local_threads = Config(
         executors=[
-            ThreadPoolExecutor( max_threads=5, label='local_threads')
+            ThreadPoolExecutor( max_threads=num_parallel_downloads, label='local_threads')
         ]
     )
     parsl.clear()
@@ -335,8 +388,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument( '--list-variables', action='store_true', help='list available ERA5 variables' )
     parser.add_argument( '--no-download', action='store_true', help='dont download anything' )
-    parser.add_argument('latn', nargs='?', default=59.4385, type=float, help='latitude in decimal degrees north')
-    parser.add_argument('longe', nargs='?', default=-151.7150, type=float, help='longitude in decimal degrees east')
+    parser.add_argument( 'latn', nargs='?', default=59.4385, type=float, help='latitude in decimal degrees north')
+    parser.add_argument( 'longe', nargs='?', default=-151.7150, type=float, help='longitude in decimal degrees east')
     parser.add_argument( '--var', action='append', help='ERA5 variable name. can use multiple times' )
     parser.add_argument( '--location-name', help='Give the output file a friendly name. ex Tyonek' )
     args = parser.parse_args()
@@ -357,18 +410,10 @@ def main():
 
     # if requested - list the era5 variables we know and quit
     if args.list_variables:
-        # load era5 variable names
-        e5_grps_fn = 'era5_reanalysis_meta.json'
-        #e5_grp_fn = 'test.json'
-        with open( e5_grps_fn, 'r') as file1:
-            e5_grps = json.load( file1 )
-
-        for e5g in e5_grps:
-            print( f'{e5g["label"]}' )
-            for e5vname in e5g["values"]:
-                print( f'\t{e5vname}' )
-            print( '' )
-        print('done.')
+        print('------------------------')
+        e5n = get_era5_names()
+        for e5v,e5vs in e5n.items():
+            print (e5v + ", " + e5vs)
         exit()
 
     if args.var == None:
@@ -387,12 +432,12 @@ def main():
     os.makedirs(loc_path, exist_ok=True)
     os.makedirs(csvout_path, exist_ok=True)
 
-    # download CDS data for location
+    # download CDS data for the given location
     if args.no_download == False:
         download_era5(grid_lat_n, grid_long_e, loc_path, e5_varlist, dt_end)
         print('download done.')
 
-    # transform raw downloads into CSV
+    # transform the raw downloads into CSV
     friendly_name = location_name
     if args.location_name:
         friendly_name = args.location_name
