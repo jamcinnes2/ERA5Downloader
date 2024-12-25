@@ -160,6 +160,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     import cdsapi
     import netCDF4
     import logging
+    import shutil
 
     # eat the cds WARNING messages
     def warn_cback( astr:str ):
