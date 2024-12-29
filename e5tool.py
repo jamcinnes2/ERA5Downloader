@@ -4,7 +4,7 @@
 # 2024 by John McInnes for Ground Truth Trekking
 #
 # todo: use os.path.join, --no-download bug, useful errors on CDSAPI changes
-# todo: use csv writer
+# todo: use csv writer, be more efficient when downloading vars we already have
 
 # some test variables.. the ones we used for hwitw
 # test_variables = [
@@ -381,7 +381,7 @@ def main():
     csvout_path = './csvoutput'
     num_parallel_downloads = 5
     logging.basicConfig(level=logging.ERROR)
-    # cdsapi has a bug that causes parsl to spit out alog of logging noise we dont want
+    # cdsapi has a bug that causes parsl to spit out alot of logging noise we dont want
     logging.disable( level=logging.CRITICAL+1 )
 
     # Configure parsl to use a local thread pool.
