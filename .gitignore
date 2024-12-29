@@ -1,0 +1,6 @@
+venv/
+cdsdownload/
+runinfo/
+csvoutput/
+*.nc
+

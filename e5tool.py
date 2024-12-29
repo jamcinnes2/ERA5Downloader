@@ -131,8 +131,8 @@ def hours_in_year(year):
 def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) -> bool:
     try:
         ads = netCDF4.Dataset( nc_filename, mode="r", clobber=False )
-    except OSError:
-        print( f'Existing output {nc_filename} could not be opened!' )
+    except OSError as err:
+        print( f'Existing output {nc_filename} could not be opened!\n{err}' )
         exit(-1)
 
     # see if the dataset has a full years worth of hours.
@@ -144,11 +144,41 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
         dt_jan1 = datetime.datetime(dt_end.year, 1, 1, tzinfo=datetime.timezone.utc)
         td1 = dt_end - dt_jan1
         max_hours = td1.total_seconds() // 3600
-        print( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) for {year}')
+        print( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
     else:
         max_hours = hours_in_year(year)
 
     return num_hours >= max_hours
+
+
+# open an ERA5 nc file and delete the unwanted variables then save it
+def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
+    # try:
+    #     ads = netCDF4.Dataset( nc_filename, mode="r+", clobber=False )
+    # except OSError as err:
+    #     print( f'Existing output {nc_filename} could not be opened!\n{err}' )
+    #     exit(-1)
+    # all_vars.remove( keep_var )
+    # ads.variables.remove( all_vars )
+    # ads.close()
+    import xarray
+    import os
+
+    # make list of short var names of variables we want to strip
+    era5_names=get_era5_names()
+    rem_e5_vars = []
+    for e5v in all_vars:
+        if e5v != keep_var:
+            rem_e5_vars.append(era5_names[e5v])
+
+    tempxds_filename = nc_filename + '.tempxds'
+
+    xds = xarray.open_dataset(nc_filename)
+    xds_new = xds.drop_vars(rem_e5_vars)
+    xds.close()
+    xds_new.to_netcdf(tempxds_filename)
+    xds_new.close()
+    os.rename(tempxds_filename,nc_filename)
 
 
 @python_app
@@ -202,14 +232,17 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     temp_filename = dest_filename + '.tempdl'
     cds.retrieve(cds_dsname, cds_req, temp_filename)
 
-    ## rename completed download, thus 'marking' it completed
-    os.rename( temp_filename, dest_filename )
-    ## we downloaded all vars at once. copy their data to their own files
-    for i in range(1, len(e5_vars)):
-        d2_fname = e5_var_filename( e5_vars[i], year )
+    ## we downloaded all vars at once. make a copy of the downloaded file for each var,
+    ## then strip the unwanted vars from it. So we aren't storing a bunch of redundant data.
+    for e5v in e5_vars:
+        d2_fname = e5_var_filename( e5v, year )
         d2_filename = f'{loc_path}/{d2_fname}'
-        shutil.copy( dest_filename, d2_filename )
-        print( 'debug: copied ' + dest_filename + " to " + d2_filename )
+        shutil.copy( temp_filename, d2_filename )
+        print( 'debug: copied ' + temp_filename + " to " + d2_filename )
+        # remove unused data from the new file
+        strip_era5_vars( d2_filename, e5_vars, e5v )
+    # done with this
+    os.remove(temp_filename)
     pass
 
 
@@ -217,11 +250,6 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
                    loc_path:str,
                    e5_vars:list,
                    dt_end:datetime.datetime ):
-    ## give the files a unique name hashed from the var names
-    #all_var_str = '-'.join(e5_vars)
-    #e5_var_hash = hashlib.md5(all_var_str.encode('utf-8') ).hexdigest()
-    # determine what variables we have and what we dont have
-
     ## for each variable
     for e5_var in e5_vars:
         lfut = []   # store the parsl futures
@@ -268,6 +296,7 @@ def open_nc_ro( loc_path:str, e5_var:str, year:int ) -> (netCDF4.Dataset, str):
 def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
     # truncate & recreate any existing CSV
     csv_file = open( csv_fname, 'w' )
+
     # create the column header line (todo: we could include UNITS here)
     header_str = 'datetime'
     for e5v in e5_vars:
@@ -425,6 +454,8 @@ def main():
     # calcute datetime of newest data we can request from CDS (5 day embargo)
     dt_today = datetime.datetime.now(tz=datetime.timezone.utc)
     dt_end = dt_today - datetime.timedelta( days=5 )
+    # step one day at a time.. dont try to get every new hour that passes
+    dt_end = datetime.datetime( dt_end.year, dt_end.month, dt_end.day, tzinfo=datetime.timezone.utc )
     #dt_end_str = f'{dt_end.year}-{dt_end.month}-{dt_end.day}'
     print( 'ERA5 latest data available should be: ' + dt_end.isoformat() );
 
