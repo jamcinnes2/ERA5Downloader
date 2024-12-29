@@ -4,7 +4,7 @@
 # 2024 by John McInnes for Ground Truth Trekking
 #
 # todo: use os.path.join, --no-download bug, useful errors on CDSAPI changes
-# todo: use csv writer, delete redundant data in .nc download files
+# todo: use csv writer
 
 # some test variables.. the ones we used for hwitw
 # test_variables = [
@@ -28,6 +28,7 @@ import os
 import math
 import typing
 import csv
+import logging
 
 import parsl
 from parsl import python_app
@@ -38,20 +39,6 @@ from parsl.executors.threads import ThreadPoolExecutor
 ERA5_START_YR: typing.Final = 1940
 ERA5_NAMES_CSV: typing.Final = './era5_names.csv'
 ERA5_KNOWN_METADATA: typing.Final = ['expver','latitude','longitude','number','valid_time']
-
-
-# # track downloaded data in a structure like this
-# # long_var_name, year, downloaded_nc_filename
-# DOWNLOAD_DB_FILE: typing.Final = './cds_dl_db.json'
-#
-# def download_db_check( e5_var:str, year:int ) -> bool:
-#     # open download 'database', see if entry exists
-#     with open( DOWNLOAD_DB_FILE, 'r') as file1:
-#         dl_db = json.load( file1 )
-#         nc_filename = dl_db[e5_var][year]
-#         if nc_filename:
-#             return true
-#     return false
 
 # lookup the ERA5 single level variable's short name
 # def e5_longtoshort( e5_var:str ) -> str:
@@ -145,7 +132,7 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
         dt_jan1 = datetime.datetime(dt_end.year, 1, 1, tzinfo=datetime.timezone.utc)
         td1 = dt_end - dt_jan1
         max_hours = td1.total_seconds() // 3600
-        print( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
+        logging.debug( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
     else:
         max_hours = hours_in_year(year)
 
@@ -154,14 +141,6 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
 
 # open an ERA5 nc file and delete the unwanted variables then save it
 def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
-    # try:
-    #     ads = netCDF4.Dataset( nc_filename, mode="r+", clobber=False )
-    # except OSError as err:
-    #     print( f'Existing output {nc_filename} could not be opened!\n{err}' )
-    #     exit(-1)
-    # all_vars.remove( keep_var )
-    # ads.variables.remove( all_vars )
-    # ads.close()
     import xarray
     import os
 
@@ -192,6 +171,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     import netCDF4
     import logging
     import shutil
+    import logging
 
     # eat the cds WARNING messages
     def warn_cback( astr:str ):
@@ -239,7 +219,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
         d2_fname = e5_var_filename( e5v, year )
         d2_filename = f'{loc_path}/{d2_fname}'
         shutil.copy( temp_filename, d2_filename )
-        print( 'debug: copied ' + temp_filename + " to " + d2_filename )
+        logging.debug( 'debug: copied ' + temp_filename + " to " + d2_filename )
         # remove unused data from the new file
         strip_era5_vars( d2_filename, e5_vars, e5v )
     # done with this
@@ -266,7 +246,7 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
             already_exists = os.path.isfile(the_destpathname) and os.path.getsize(the_destpathname) > 500
             if already_exists:
                 if download_is_complete(the_destpathname,year,dt_end):
-                    print(f'{the_destpathname} is complete. skipping')
+                    logging.debug(f'{the_destpathname} is complete. skipping')
                     continue
 
             # use futures to download in parallel. request all vars at once
@@ -328,7 +308,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
             first_dt = datetime.datetime.fromtimestamp(first_epoch, datetime.timezone.utc)
             roffset_td = first_dt - datetime.datetime( year, 1, 1, tzinfo=datetime.timezone.utc )
             hour_offset = roffset_td / datetime.timedelta(hours=1)
-            print( f'debug: {rfname} hour_offset {hour_offset}' )
+            logging.debug( f'debug: {rfname} hour_offset {hour_offset}' )
             rds_offset.append( hour_offset )
 
             # get the number of hours in the file
@@ -337,11 +317,11 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
             if year == ERA5_START_YR:
                 # with ERA5_START_YR there seems to be some variation. 8777 hours for some vars.
                 if nh_in_file != 8760 and nh_in_file != 8784 and nh_in_file != 8777:
-                    print(f'weird num_hours {nh_in_file} for {year} {rfname}.')
+                    logging.debug(f'weird num_hours {nh_in_file} for {year} {rfname}.')
 
             elif year != end_year:
                 if nh_in_file != 8760 and nh_in_file != 8784:
-                    print(f'weird num_hours {nh_in_file} for {year} {rfname}.')
+                    logging.debug(f'weird num_hours {nh_in_file} for {year} {rfname}.')
 
             # # CDS doesn't give us a way to programmatically map a variable's long name
             # # ..to it's short name. The long name is used in the CDS request and the
@@ -399,7 +379,10 @@ def main():
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
     csvout_path = './csvoutput'
-    num_parallel_downloads = 1
+    num_parallel_downloads = 5
+    logging.basicConfig(level=logging.ERROR)
+    # cdsapi has a bug that causes parsl to spit out alog of logging noise we dont want
+    logging.disable( level=logging.CRITICAL+1 )
 
     # Configure parsl to use a local thread pool.
     # Set the # of simultaneous downloads here! max_threads
