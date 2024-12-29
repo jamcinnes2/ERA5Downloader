@@ -3,12 +3,21 @@ e5tool.py is a Python 3 command line program that uses the cdsapi to download ER
 
 The program requests the latest data possible every time you run it (with respect to the 5 day ERA5 embargo period). But only once a day. For example say you run the program to get 2m_temperature. You will get the latest 2m_temperature data. Then an hour later you run it again to get 2m_temperature. The program will not try to download any new data yet as this would be redundant. It will use the cached download. Then a day later you run the program again. It will now download the newest 2m_temperature data.
 
+### Installation
+If desired, create and activate a python virtual environment to install the program in. This is optional.
+The python library requirements are listed in requirements.txt. You can install these using pip or your OS package manager.
+
+`pip install -r requirements.txt`
+
 ### Usage
 On BSDish systems like Mac & Linux make the e5tool.py file executable and run it directly.
 
-`./e5tool.py`
+```
+chmod +x e5tool.py
+./e5tool.py
+```
 
-Or invoke it using python3.
+Or invoke it using the python command.
 
 `python3 e5tool.py`
 
