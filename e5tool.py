@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # ERA5 data downloading tool
 #
 # 2024 by John McInnes for Ground Truth Trekking
