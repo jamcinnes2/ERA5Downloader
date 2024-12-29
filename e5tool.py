@@ -322,13 +322,12 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
         for e5v in e5_vars:
             rds, rfname = open_nc_ro( loc_path, e5v, year )
             rds_list.append( rds )
-            print( f'debug: opened {rfname}' )
 
             first_epoch = rds['valid_time'][0]
             first_dt = datetime.datetime.fromtimestamp(first_epoch, datetime.timezone.utc)
             roffset_td = first_dt - datetime.datetime( year, 1, 1, tzinfo=datetime.timezone.utc )
             hour_offset = roffset_td / datetime.timedelta(hours=1)
-            print( hour_offset )
+            print( f'debug: {rfname} hour_offset {hour_offset}' )
             rds_offset.append( hour_offset )
 
             # get the number of hours in the file
@@ -394,7 +393,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
 
 def main():
-    app_version = "0.7.0"
+    app_version = "0.8.0"
     current_time = datetime.datetime.now()
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
