@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ERA5 data downloading tool
 #
-# 2024 by John McInnes for Ground Truth Trekking
+# 2024 by John McInnes for Ground Truth Alaska
 #
 # todo: use os.path.join, --no-download bug, useful errors on CDSAPI changes
 # todo: use csv writer, be more efficient when downloading vars we already have
@@ -132,7 +132,7 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
         dt_jan1 = datetime.datetime(dt_end.year, 1, 1, tzinfo=datetime.timezone.utc)
         td1 = dt_end - dt_jan1
         max_hours = td1.total_seconds() // 3600
-        logging.debug( f'debug max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
+        logging.debug( f'{nc_filename} max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
     else:
         max_hours = hours_in_year(year)
 
@@ -154,6 +154,7 @@ def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
     tempxds_filename = nc_filename + '.tempxds'
 
     xds = xarray.open_dataset(nc_filename)
+    logging.debug( f'strip_era5_vars src {xds.variables} target {rem_e5_vars}' )
     xds_new = xds.drop_vars(rem_e5_vars)
     xds.close()
     xds_new.to_netcdf(tempxds_filename)
@@ -183,7 +184,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
 
     # setup CDS
     cds_dsname = 'reanalysis-era5-single-levels'
-    #cds = cdsapi.Client()
+    cds = cdsapi.Client()
     cds = cdsapi.Client(
         url=os.environ.get("CDSAPI_URL"),
         key=os.environ.get("CDSAPI_KEY"),
@@ -193,19 +194,13 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
         timeout=80,
         progress=True,
         delete=True,
-        retry_max=500,
+        retry_max=5,
         sleep_max=60,
         warning_callback=warn_cback )
         # wait_until_complete=True,
         # info_callback=None, warning_callback=None, error_callback=None,
         # debug_callback=None, metadata=None, forget=False,
         # session=requests.Session())
-
-    # cdsapi has a logging bug that causes parsl to spit out alot of stuff we dont need.
-    # disable all logging
-    #loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
-    #clog = logging.getLogger[ 'cdsapi' ]
-    #logging.disable( level=logging.CRITICAL+1 )
 
     # download to temporary file
     print( f'downloading {e5_vars} {year}...' )
@@ -380,7 +375,7 @@ def main():
     cds_dsname = 'reanalysis-era5-single-levels'
     csvout_path = './csvoutput'
     num_parallel_downloads = 5
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.DEBUG)
     # cdsapi has a bug that causes parsl to spit out alot of logging noise we dont want
     logging.disable( level=logging.CRITICAL+1 )
 

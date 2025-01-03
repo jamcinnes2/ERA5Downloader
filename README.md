@@ -9,6 +9,14 @@ The python library requirements are listed in requirements.txt. You can install 
 
 `pip install -r requirements.txt`
 
+### CDS API key
+You will need to signup with the Copernicus data service to get an access token. https://cds.climate.copernicus.eu/ The token needs to be entered in a text file in your home directory named ".cdsapirc". The contents of the file should look like this (non-working example):
+```
+url: https://cds.climate.copernicus.eu/api
+key: 134df93e-94ba-65ea-a333-fa17899abc8d
+
+```
+
 ### Usage
 On BSDish systems like Mac & Linux make the e5tool.py file executable and run it directly.
 
@@ -61,3 +69,5 @@ There is a bash script included that you can use to update the list. You shouldn
 
 `get_era5_names.sh`
  
+### Credits
+Developed for Ground Truth Alaska 2024
