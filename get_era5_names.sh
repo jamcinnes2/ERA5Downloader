@@ -11,7 +11,10 @@
 curl "https://confluence.ecmwf.int/plugins/viewsource/viewpagesrc.action?pageId=76414402" > era5_names.html 
 
 # parse out the long and short variable names to a csv file
-< era5_names.html tr -d '\n' | grep -Po '<table.*?</table>' | grep -i 'name in CDS' | sed -e 's/,/\ /g' -e 's/<tr[^>]*>/\n/g' -e 's/<[^>]*t[dh]>/,/g' -e 's/<[^>]*>//g' | cut -d',' -f4,5 | grep -E --invert-match  -i 'variable name|^\s*$' > era5_names.csv
+< era5_names.html tr -d '\n' | grep -Po '<table.*?</table>' | grep -i 'name in CDS' | sed -e 's/,/\ /g' -e 's/<tr[^>]*>/\n/g' -e 's/<[^>]*t[dh]>/,/g' -e 's/<[^>]*>//g' | cut -d',' -f4,5 | grep -E --invert-match  -i 'variable name|^\s*$' | sort > era5_names.csv
+
+# done with this file
+rm ./era5_names.html
 
 # fix the variables that we know are wrong on the wiki page
 sed -i 's/2m_temperature,2t/2m_temperature,t2m/' era5_names.csv

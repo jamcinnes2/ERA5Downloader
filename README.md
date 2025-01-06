@@ -3,6 +3,13 @@ e5tool.py is a Python 3 command line program that uses the cdsapi to download ER
 
 The program requests the latest data possible every time you run it (with respect to the 5 day ERA5 embargo period). But only once a day. For example say you run the program to get 2m_temperature. You will get the latest 2m_temperature data. Then an hour later you run it again to get 2m_temperature. The program will not try to download any new data yet as this would be redundant. It will use the cached download. Then a day later you run the program again. It will now download the newest 2m_temperature data.
 
+#### ERA5 hourly request limits
+The CDS server has a limit of 120000 'items' per request. Roughly speaking this means you might only be able to download a few variables at a time, depending on the variable.
+https://confluence-test-dc.ecmwf.int/display/CUSF/CDSAPI+limitations+and+restrictions
+
+The ERA5 Download form webpage can be used to explore request limits:
+https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download
+
 ### Installation
 If desired, create and activate a python virtual environment to install the program in. This is optional.
 The python library requirements are listed in requirements.txt. You can install these using pip or your OS package manager.
@@ -10,12 +17,14 @@ The python library requirements are listed in requirements.txt. You can install 
 `pip install -r requirements.txt`
 
 ### CDS API key
-You will need to signup with the Copernicus data service to get an access token. https://cds.climate.copernicus.eu/ The token needs to be entered in a text file in your home directory named ".cdsapirc". The contents of the file should look like this (non-working example):
-```
-url: https://cds.climate.copernicus.eu/api
-key: 134df93e-94ba-65ea-a333-fa17899abc8d
+You will need to signup with the Copernicus data service to get an access token. And you will need to agree to the licenses. See full instructions here https://cds.climate.copernicus.eu/how-to-api
 
-```
+The license agreements can be accessed from the ERA5 Download form webpage:
+https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download
+
+NOTE: The CDS service has been back logged with users and is very slow. You can check the status here and here:
+https://cds.climate.copernicus.eu/live
+https://status.ecmwf.int/
 
 ### Usage
 On BSDish systems like Mac & Linux make the e5tool.py file executable and run it directly.
