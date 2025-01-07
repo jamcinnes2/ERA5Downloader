@@ -166,7 +166,8 @@ def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
 def download_era5_year( grid_lat_n:float, grid_long_e:float,
                         loc_path:str,
                         e5_vars:list,
-                        year:int ):
+                        year:int,
+                        quiet_flag:bool ):
     # internalize imports for parsl compat.
     import cdsapi
     import netCDF4
@@ -184,11 +185,11 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
 
     # setup CDS
     cds_dsname = 'reanalysis-era5-single-levels'
-    cds = cdsapi.Client()
+    #cds = cdsapi.Client()
     cds = cdsapi.Client(
         url=os.environ.get("CDSAPI_URL"),
         key=os.environ.get("CDSAPI_KEY"),
-        quiet=True,
+        quiet=False,
         debug=False,
         verify=None,
         timeout=80,
@@ -203,7 +204,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
         # session=requests.Session())
 
     # download to temporary file
-    print( f'downloading {e5_vars} {year}...' )
+    print( f'requested {e5_vars} {year}...' )
     cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_vars, year )
     temp_filename = dest_filename + '.tempdl'
     cds.retrieve(cds_dsname, cds_req, temp_filename)
@@ -225,8 +226,10 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
 def download_era5( grid_lat_n:float, grid_long_e:float,
                    loc_path:str,
                    e5_vars:list,
-                   dt_end:datetime.datetime ):
+                   dt_end:datetime.datetime,
+                   quiet_flag:bool):
     ## for each variable
+    e5_vars_todownload = e5_vars.copy()
     for e5_var in e5_vars:
         lfut = []   # store the parsl futures
         # for each year from 1940
@@ -246,11 +249,12 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
 
             # use futures to download in parallel. request all vars at once
             lfut.append(
-                download_era5_year( grid_lat_n, grid_long_e, loc_path, e5_vars, year )
+                download_era5_year( grid_lat_n, grid_long_e, loc_path, e5_vars_todownload, year, quiet_flag )
             )
 
         # Wait for the results from parsl-ing
         [i.result() for i in lfut]
+        e5_vars_todownload.remove(e5_var)
         print(f'done downloading {e5_var}.')
     pass
 
@@ -369,25 +373,27 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
 
 def main():
-    app_version = "0.8.0"
+    app_version = "0.9.0"
     current_time = datetime.datetime.now()
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
     csvout_path = './csvoutput'
     num_parallel_downloads = 5
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.ERROR) #logging.DEBUG)
     # cdsapi has a bug that causes parsl to spit out alot of logging noise we dont want
-    logging.disable( level=logging.CRITICAL+1 )
 
     # Configure parsl to use a local thread pool.
     # Set the # of simultaneous downloads here! max_threads
     local_threads = Config(
         executors=[
             ThreadPoolExecutor( max_threads=num_parallel_downloads, label='local_threads')
-        ]
+        ],
+        initialize_logging=False
     )
     parsl.clear()
     parsl.load(local_threads)
+    logging.getLogger("parsl").setLevel(level=logging.CRITICAL+1) # disable parsl logging
+
 
     # hello
     print( f'CDS ERA5 {cds_dsname} download tool v{app_version} **\n')
@@ -396,6 +402,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument( '--list-variables', action='store_true', help='list available ERA5 variables' )
     parser.add_argument( '--no-download', action='store_true', help='dont download anything' )
+    parser.add_argument( '--verbose', action='store_true', help='verbose CDSAPI messages' )
     parser.add_argument( 'latn', nargs='?', default=59.4385, type=float, help='latitude in decimal degrees north')
     parser.add_argument( 'longe', nargs='?', default=-151.7150, type=float, help='longitude in decimal degrees east')
     parser.add_argument( '--var', action='append', help='ERA5 variable name. can use multiple times' )
@@ -429,6 +436,12 @@ def main():
         exit(-1)
     e5_varlist = args.var
 
+    quiet_flag = not args.verbose # if not verbose then be quiet
+    if quiet_flag == True:
+        logging.disable(level=logging.CRITICAL+1)
+    else:
+        logging.getLogger().setLevel(level=logging.INFO)
+
     # calcute datetime of newest data we can request from CDS (5 day embargo)
     dt_today = datetime.datetime.now(tz=datetime.timezone.utc)
     dt_end = dt_today - datetime.timedelta( days=5 )
@@ -444,7 +457,7 @@ def main():
 
     # download CDS data for the given location
     if args.no_download == False:
-        download_era5(grid_lat_n, grid_long_e, loc_path, e5_varlist, dt_end)
+        download_era5(grid_lat_n, grid_long_e, loc_path, e5_varlist, dt_end, quiet_flag)
         print('download done.')
 
     # transform the raw downloads into CSV

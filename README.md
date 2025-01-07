@@ -54,6 +54,7 @@ options:
   -h, --help            show this help message and exit
   --list-variables      list available ERA5 variables
   --no-download         dont download anything
+  --verbose             verbose CDSAPI messages
   --var VAR             ERA5 variable name. can use multiple times
   --location-name LOCATION_NAME
                         Give the output file a friendly name. ex Tyonek
