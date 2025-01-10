@@ -141,8 +141,12 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
 
 # open an ERA5 nc file and delete the unwanted variables then save it
 def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
-    import xarray
     import os
+    import xarray
+    # this makes the HDF5-DIAG messages go away
+    xarray.set_options(file_cache_maxsize=400) # make it big enough for all files in mfdataset
+    # from dask.distributed import Client
+    # c = Client(n_workers=os.cpu_count()-2, threads_per_worker=1)
 
     # make list of short var names of variables we want to strip
     era5_names=get_era5_names()
@@ -170,7 +174,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
                         quiet_flag:bool ):
     # internalize imports for parsl compat.
     import cdsapi
-    import netCDF4
+    #import netCDF4
     import logging
     import shutil
     import logging
@@ -179,13 +183,16 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     def warn_cback( astr:str ):
         pass
 
+    # be really quiet if requested
+    if quiet_flag:
+        logging.disable(level=logging.CRITICAL+1)
+
     # download the data to a file named after var0
     output_fname = e5_var_filename( e5_vars[0], year )
     dest_filename = f'{loc_path}/{output_fname}'
 
     # setup CDS
     cds_dsname = 'reanalysis-era5-single-levels'
-    #cds = cdsapi.Client()
     cds = cdsapi.Client(
         url=os.environ.get("CDSAPI_URL"),
         key=os.environ.get("CDSAPI_KEY"),
@@ -218,7 +225,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
         logging.debug( 'debug: copied ' + temp_filename + " to " + d2_filename )
         # remove unused data from the new file
         strip_era5_vars( d2_filename, e5_vars, e5v )
-    # done with this
+    # done with this file
     os.remove(temp_filename)
     pass
 
@@ -294,7 +301,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
     years = list( range( start_year, end_year + 1 ) )
     for year in years:
         yidx = year - start_year
-        print( f'output year {year}' )
+        print( f'\routputting year {year}     ', end='', flush=True )
 
         # open all our raw dataset netcdf files for this year. one for each ERA5 var
         rds_list = []

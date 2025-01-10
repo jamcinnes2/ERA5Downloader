@@ -1,4 +1,4 @@
-cdsapi
-netCDF4
 xarray
+cdsapi
 parsl
+netCDF4
