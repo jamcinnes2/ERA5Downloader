@@ -143,10 +143,10 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
 def strip_era5_vars( nc_filename:str, all_vars:list, keep_var:str ):
     import os
     import xarray
-    # this makes the HDF5-DIAG messages go away
-    xarray.set_options(file_cache_maxsize=400) # make it big enough for all files in mfdataset
+    # # this makes the HDF5-DIAG messages go away
+    # xarray.set_options(file_cache_maxsize=400) # make it big enough for all files in mfdataset
     # from dask.distributed import Client
-    # c = Client(n_workers=os.cpu_count()-2, threads_per_worker=1)
+    # cdas = Client(n_workers=1, threads_per_worker=1)
 
     # make list of short var names of variables we want to strip
     era5_names=get_era5_names()
@@ -225,6 +225,7 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
         logging.debug( 'debug: copied ' + temp_filename + " to " + d2_filename )
         # remove unused data from the new file
         strip_era5_vars( d2_filename, e5_vars, e5v )
+
     # done with this file
     os.remove(temp_filename)
     pass
@@ -380,7 +381,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
 
 def main():
-    app_version = "0.9.0"
+    app_version = "0.9.1"
     current_time = datetime.datetime.now()
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'

@@ -1,4 +1,5 @@
 xarray
 cdsapi
 parsl
+libnetcdf!=4.9.1
 netCDF4

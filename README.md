@@ -4,10 +4,17 @@ e5tool.py is a Python 3 command line program that uses the cdsapi to download ER
 The program requests the latest data possible every time you run it (with respect to the 5 day ERA5 embargo period). But only once a day. For example say you run the program to get 2m_temperature. You will get the latest 2m_temperature data. Then an hour later you run it again to get 2m_temperature. The program will not try to download any new data yet as this would be redundant. It will use the cached download. Then a day later you run the program again. It will now download the newest 2m_temperature data.
 
 #### ERA5 hourly request limits
-The CDS server has a limit of 120000 'items' per request. Roughly speaking this means you might only be able to download a few variables at a time, depending on the variable. https://confluence-test-dc.ecmwf.int/display/CUSF/CDSAPI+limitations+and+restrictions
+The CDS server has a limit of 120000 'items' per request. Roughly speaking this means you might only be able to download a few variables at a time, depending on the variable. Some variable sets have even lower limits. https://confluence-test-dc.ecmwf.int/display/CUSF/CDSAPI+limitations+and+restrictions
 
 The ERA5 Download form webpage can be used to explore request limits:  
 https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=download
+
+#### CDS performance
+Any request for variables that reside on the MARS archive can be expected to take hours or days.  
+https://confluence.ecmwf.int/display/CKB/How+to+download+ERA5
+
+"Submit small requests over very large and heavy requests. This will ensure your requests are not penalised in the CDS request queue"  
+https://confluence.ecmwf.int/display/CKB/Climate+Data+Store+%28CDS%29+documentation#ClimateDataStore(CDS)documentation-Efficiencytips
 
 ### Installation
 If desired, create and activate a python virtual environment to install the program in. This is optional.
@@ -27,7 +34,7 @@ https://status.ecmwf.int/
 See your individual requests here: https://cds.climate.copernicus.eu/requests?tab=all
 
 ### Usage
-On BSDish systems like Mac & Linux make the e5tool.py file executable and run it directly.
+On Mac & Linux make the e5tool.py file executable and run it directly.
 
 ```
 chmod +x e5tool.py
