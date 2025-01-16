@@ -179,6 +179,9 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     import shutil
     import logging
 
+    # we download a single var at a time now
+    assert len(e5_vars) == 1
+
     # eat the cds WARNING messages
     def warn_cback( astr:str ):
         pass
@@ -215,19 +218,22 @@ def download_era5_year( grid_lat_n:float, grid_long_e:float,
     cds_req = form_cds_request( grid_lat_n, grid_long_e, e5_vars, year )
     temp_filename = dest_filename + '.tempdl'
     cds.retrieve(cds_dsname, cds_req, temp_filename)
+    # mark it done by renaming
+    os.rename( temp_filename, dest_filename )
 
-    ## we downloaded all vars at once. make a copy of the downloaded file for each var,
-    ## then strip the unwanted vars from it. So we aren't storing a bunch of redundant data.
-    for e5v in e5_vars:
-        d2_fname = e5_var_filename( e5v, year )
-        d2_filename = f'{loc_path}/{d2_fname}'
-        shutil.copy( temp_filename, d2_filename )
-        logging.debug( 'debug: copied ' + temp_filename + " to " + d2_filename )
-        # remove unused data from the new file
-        strip_era5_vars( d2_filename, e5_vars, e5v )
-
-    # done with this file
-    os.remove(temp_filename)
+    # # multivar download code
+    # ## we downloaded all vars at once. make a copy of the downloaded file for each var,
+    # ## then strip the unwanted vars from it. So we aren't storing a bunch of redundant data.
+    # for e5v in e5_vars:
+    #     d2_fname = e5_var_filename( e5v, year )
+    #     d2_filename = f'{loc_path}/{d2_fname}'
+    #     shutil.copy( temp_filename, d2_filename )
+    #     logging.debug( 'debug: copied ' + temp_filename + " to " + d2_filename )
+    #     # remove unused data from the new file
+    #     strip_era5_vars( d2_filename, e5_vars, e5v )
+    #
+    # # done with this file
+    # os.remove(temp_filename)
     pass
 
 
@@ -237,7 +243,6 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
                    dt_end:datetime.datetime,
                    quiet_flag:bool):
     ## for each variable
-    e5_vars_todownload = e5_vars.copy()
     for e5_var in e5_vars:
         lfut = []   # store the parsl futures
         # for each year from 1940
@@ -257,12 +262,11 @@ def download_era5( grid_lat_n:float, grid_long_e:float,
 
             # use futures to download in parallel. request all vars at once
             lfut.append(
-                download_era5_year( grid_lat_n, grid_long_e, loc_path, e5_vars_todownload, year, quiet_flag )
+                download_era5_year( grid_lat_n, grid_long_e, loc_path, [e5_var], year, quiet_flag )
             )
 
         # Wait for the results from parsl-ing
         [i.result() for i in lfut]
-        e5_vars_todownload.remove(e5_var)
         print(f'done downloading {e5_var}.')
     pass
 
@@ -381,7 +385,7 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
 
 
 def main():
-    app_version = "0.9.1"
+    app_version = "0.9.2"
     current_time = datetime.datetime.now()
     cdsdn_path = './cdsdownload'
     cds_dsname = 'reanalysis-era5-single-levels'
