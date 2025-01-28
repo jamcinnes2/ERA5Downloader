@@ -133,6 +133,9 @@ def download_is_complete( nc_filename:str, year:int, dt_end:datetime.datetime ) 
         td1 = dt_end - dt_jan1
         max_hours = td1.total_seconds() // 3600
         logging.debug( f'{nc_filename} max_hours {max_hours} ({td1.total_seconds()/3600}) num_hours {num_hours} for {year}')
+    # if it is ERA5_START_YR, we get weird varying start times in 1940. Assume more than 8000 hours is complete.
+    elif year == ERA5_START_YR:
+        max_hours = 8000;
     else:
         max_hours = hours_in_year(year)
 
@@ -362,7 +365,16 @@ def create_csv( loc_path:str, csv_fname:str, e5_vars:list, end_year:int ):
                 # select from e5_var where the time == epoch_sec
                 rds_hour_idx = hour_idx - rds_offset[var_idx]
                 if rds_hour_idx >= 0 and rds_hour_idx < rds_list[var_idx]['valid_time'].size:
-                    val = rds_list[var_idx][e5short][rds_hour_idx][0][0]
+                    try:
+                        val = rds_list[var_idx][e5short][rds_hour_idx][0][0]
+                    except IndexError as e:
+                        long_i = e5_short_vars.index(e5short)
+                        e5_long_name = e5_vars[long_i]
+                        print( f'\nIndexError! probable short name lookup error: {e5_long_name} -> {e5short}' )
+                        print( f'If so fix it in the get_era5_names.sh script.' )
+                        print( e )
+                        exit(-1)
+
                     val_str = str(val)
                 else:
                     val_str = 'null'

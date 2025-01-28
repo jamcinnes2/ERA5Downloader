@@ -19,3 +19,6 @@ rm ./era5_names.html
 # fix the variables that we know are wrong on the wiki page
 sed -i 's/2m_temperature,2t/2m_temperature,t2m/' era5_names.csv
 sed -i 's/2m_dewpoint_temperature,2d/2m_dewpoint_temperature,d2m/' era5_names.csv
+sed -i 's/mean_snowmelt_rate,msmr/mean_snowmelt_rate,avg_smr/' era5_names.csv
+sed -i 's/mean_large_scale_precipitation_rate,mlspr/mean_large_scale_precipitation_rate,avg_lsprate/' era5_names.csv
+

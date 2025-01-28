@@ -87,7 +87,7 @@ mean_eastward_turbulent_surface_stress,metss
 mean_evaporation_rate,mer
 mean_gravity_wave_dissipation,mgwd
 mean_large_scale_precipitation_fraction,mlspf
-mean_large_scale_precipitation_rate,mlspr
+mean_large_scale_precipitation_rate,avg_lsprate
 mean_large_scale_snowfall_rate,mlssr
 mean magnitude of turbulent surface stress,mmtss
 mean_northward_gravity_wave_surface_stress,mngwss
@@ -99,7 +99,7 @@ mean_runoff_rate,mror
 mean_sea_level_pressure,msl
 mean_snow_evaporation_rate,mser
 mean_snowfall_rate,msr
-mean_snowmelt_rate,msmr
+mean_snowmelt_rate,avg_smr
 mean_square_slope_of_waves,msqs
 mean_sub_surface_runoff_rate,mssror
 mean_surface_direct_short_wave_radiation_flux_clear_sky,msdrswrfcs
